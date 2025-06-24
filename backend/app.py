@@ -1,8 +1,4 @@
-"""
-AI Emotion Detection System v9.0 - Backend Server
-Flask API for emotion analysis using pretrained AI models
-Author: Keerthi N (1RF23MC039)
-"""
+
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -16,7 +12,7 @@ import numpy as np
 from models.text_analyzer import TextEmotionAnalyzer
 # from models.audio_analyzer import AudioEmotionAnalyzer
 from models.visual_analyzer import VisualEmotionAnalyzer
-# from utils.emotion_combiner import EmotionCombiner
+from utils.emotion_combiner import EmotionCombiner
 from utils.config import Config
 
 # Configure logging
@@ -63,7 +59,7 @@ def initialize_models():
         text_analyzer = TextEmotionAnalyzer()
         # audio_analyzer = AudioEmotionAnalyzer()
         visual_analyzer = VisualEmotionAnalyzer()
-        # emotion_combiner = EmotionCombiner()
+        emotion_combiner = EmotionCombiner()
         logger.info("✅ All AI models loaded successfully!")
         return True
     except Exception as e:
@@ -173,13 +169,21 @@ def models_status():
                 'model_name': getattr(text_analyzer, 'model_name', None),
                 'status': 'ready' if text_analyzer else 'not_loaded'
             },
-            # 'audio_analyzer': {...}
+            'audio_analyzer': {
+                'loaded': audio_analyzer is not None,
+                'model_name': getattr(audio_analyzer, 'model_name', None),
+                'status': 'ready' if audio_analyzer else 'not_loaded'
+            },
             'visual_analyzer': {
                 'loaded': visual_analyzer is not None,
                 'emotion_labels': getattr(visual_analyzer, 'emotion_labels', None),
                 'status': 'ready' if visual_analyzer else 'not_loaded'
             },
-            # 'emotion_combiner': {...}
+            'emotion_combiner': {
+                'loaded': emotion_combiner is not None,
+                'strategy': getattr(emotion_combiner, 'strategy', 'weighted_average'),
+                'status': 'ready' if emotion_combiner else 'not_loaded'
+            }
         })
     except Exception as e:
         logger.error(f"Model status error: {e}")
