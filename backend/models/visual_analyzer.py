@@ -10,6 +10,7 @@ import logging
 from typing import List, Dict, Optional
 import tempfile 
 import os
+import traceback
 
 class VisualEmotionAnalyzer:
     def __init__(self):
@@ -20,53 +21,47 @@ class VisualEmotionAnalyzer:
     def analyze_emotion(self, image_path: str) -> List[Dict[str, float]]:
         """
         Analyze facial emotions in image using DeepFace
-        
-        Args:
-            image_path (str): Path to image file
-            
-        Returns:
-            List[Dict]: List of emotions with confidence scores
         """
         try:
-            # Analyze the image using DeepFace
+            # Preprocess image first
+            processed_path = self.preprocess_image(image_path)
+            if not processed_path or not os.path.exists(processed_path):
+                self.logger.error("Image preprocessing failed or file doesn't exist.")
+                return self._get_default_emotions()
+
+            # Confirm image is readable
+            if cv2.imread(processed_path) is None:
+                self.logger.error(f"OpenCV could not read image at: {processed_path}")
+                return self._get_default_emotions()
+
+            # DeepFace emotion analysis
             result = DeepFace.analyze(
-                img_path=image_path, 
-                actions=['emotion'], 
+                img_path=processed_path,
+                actions=['emotion'],
                 enforce_detection=False,
                 silent=True
             )
-            
+
             # Extract emotions
-            if isinstance(result, list):
-                emotions_dict = result[0]['emotion']
-            else:
-                emotions_dict = result['emotion']
-            
-            # Convert to our format
-            emotions = []
-            for emotion, confidence in emotions_dict.items():
-                emotions.append({
-                    'emotion': emotion.lower(),
-                    'confidence': confidence
-                })
-            
-            # Sort by confidence
+            emotions_dict = result[0]['emotion'] if isinstance(result, list) else result['emotion']
+            emotions = [
+                {'emotion': emotion.lower(), 'confidence': round(confidence, 2)}
+                for emotion, confidence in emotions_dict.items()
+            ]
             emotions = sorted(emotions, key=lambda x: x['confidence'], reverse=True)
-            
-            self.logger.info(f"Visual emotion analysis completed. Top emotion: {emotions[0]['emotion']}")
+
+            # Log and return
+            self.logger.info(f"Visual emotion analysis completed. Top: {emotions[0]['emotion']} ({emotions[0]['confidence']}%)")
             return emotions
-            
+
         except Exception as e:
             self.logger.error(f"Error analyzing visual emotion: {e}")
-            # Return default emotions if analysis fails
+            self.logger.debug("Traceback:\n%s", traceback.format_exc())
             return self._get_default_emotions()
-    
+
     def _get_default_emotions(self) -> List[Dict[str, float]]:
         """
         Return default emotion distribution when analysis fails
-        
-        Returns:
-            List[Dict]: Default emotion classifications
         """
         default_emotions = {
             'neutral': 40,
@@ -77,66 +72,53 @@ class VisualEmotionAnalyzer:
             'angry': 3,
             'disgust': 2
         }
-        
         return [{'emotion': k, 'confidence': v} for k, v in default_emotions.items()]
     
     def preprocess_image(self, image_path: str) -> Optional[str]:
         """
         Preprocess image for better emotion detection
-        
-        Args:
-            image_path (str): Path to input image
-            
-        Returns:
-            str: Path to preprocessed image or None if error
         """
         try:
-            # Read image
             img = cv2.imread(image_path)
             if img is None:
+                self.logger.error(f"Cannot read image for preprocessing: {image_path}")
                 return None
-            
-            # Convert to RGB
+
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
-            # Resize if too large
+
             height, width = img_rgb.shape[:2]
             if width > 1024 or height > 1024:
-                scale = min(1024/width, 1024/height)
-                new_width = int(width * scale)
-                new_height = int(height * scale)
-                img_rgb = cv2.resize(img_rgb, (new_width, new_height))
-            
-            # Save preprocessed image
+                scale = min(1024 / width, 1024 / height)
+                img_rgb = cv2.resize(img_rgb, (int(width * scale), int(height * scale)))
+
             temp_path = tempfile.mktemp(suffix='.jpg')
             img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
             cv2.imwrite(temp_path, img_bgr)
-            
+
             return temp_path
-            
+
         except Exception as e:
             self.logger.error(f"Error preprocessing image: {e}")
+            self.logger.debug("Traceback:\n%s", traceback.format_exc())
             return None
-    
+
     def detect_faces(self, image_path: str) -> int:
         """
         Detect number of faces in image
-        
-        Args:
-            image_path (str): Path to image file
-            
-        Returns:
-            int: Number of faces detected
         """
         try:
             img = cv2.imread(image_path)
+            if img is None:
+                self.logger.warning(f"OpenCV failed to read image for face detection: {image_path}")
+                return 0
+
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            
-            # Use OpenCV's face detector
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            faces = face_cascade.detectMultiScale(gray, 1.1, 4)          
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+            self.logger.info(f"Detected {len(faces)} face(s) in image")
             return len(faces)
-            
+
         except Exception as e:
             self.logger.error(f"Error detecting faces: {e}")
+            self.logger.debug("Traceback:\n%s", traceback.format_exc())
             return 0

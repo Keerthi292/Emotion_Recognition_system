@@ -1,5 +1,3 @@
-
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -10,7 +8,7 @@ import numpy as np
 
 # Import AI model modules
 from models.text_analyzer import TextEmotionAnalyzer
-# from models.audio_analyzer import AudioEmotionAnalyzer
+from models.audio_analyzer import AudioEmotionAnalyzer
 from models.visual_analyzer import VisualEmotionAnalyzer
 from utils.emotion_combiner import EmotionCombiner
 from utils.config import Config
@@ -37,8 +35,22 @@ audio_analyzer = None
 visual_analyzer = None
 emotion_combiner = None
 
+def initialize_models():
+    global text_analyzer, audio_analyzer, visual_analyzer, emotion_combiner
+    try:
+        logger.info("Initializing AI Emotion Detection System v9.0...")
+        text_analyzer = TextEmotionAnalyzer()
+        audio_analyzer = AudioEmotionAnalyzer()
+        visual_analyzer = VisualEmotionAnalyzer()
+        emotion_combiner = EmotionCombiner()
+        logger.info("All AI models loaded successfully.")
+        return True
+    except Exception as e:
+        logger.error(f"Model loading failed: {e}")
+        return False
+
+# Convert NumPy types to native Python types
 def convert_numpy(obj):
-    """Recursively convert NumPy types to native Python types"""
     if isinstance(obj, dict):
         return {k: convert_numpy(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -50,21 +62,6 @@ def convert_numpy(obj):
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
     return obj
-
-def initialize_models():
-    """Initialize AI models"""
-    global text_analyzer, audio_analyzer, visual_analyzer, emotion_combiner
-    try:
-        logger.info("🚀 Initializing AI Emotion Detection System v9.0...")
-        text_analyzer = TextEmotionAnalyzer()
-        # audio_analyzer = AudioEmotionAnalyzer()
-        visual_analyzer = VisualEmotionAnalyzer()
-        emotion_combiner = EmotionCombiner()
-        logger.info("✅ All AI models loaded successfully!")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Model loading failed: {e}")
-        return False
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -103,45 +100,55 @@ def analyze_emotions():
         # Text input
         if 'text' in request.form and request.form['text'].strip():
             text = request.form['text']
-            logger.info(f"🔍 Analyzing text: {len(text)} characters")
-            if text_analyzer:
-                results['text_emotions'] = convert_numpy(text_analyzer.analyze_emotion(text))
-            else:
-                results['text_emotions'] = []
+            logger.info(f"Analyzing text: {len(text)} characters")
+            results['text_emotions'] = convert_numpy(text_analyzer.analyze_emotion(text)) if text_analyzer else []
 
         # Audio input
         if 'audio' in request.files:
             audio_file = request.files['audio']
             if audio_file and Config.allowed_file(audio_file.filename, 'audio'):
-                logger.info(f"🔊 Analyzing audio: {audio_file.filename}")
+                logger.info(f"Analyzing audio: {audio_file.filename}")
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_audio:
-                    audio_file.save(tmp_audio.name)
-                    if audio_analyzer:
-                        results['audio_emotions'] = convert_numpy(audio_analyzer.analyze_emotion(tmp_audio.name))
-                    else:
-                        results['audio_emotions'] = []
-                    os.unlink(tmp_audio.name)
+                    tmp_path = tmp_audio.name
+                    audio_file.save(tmp_path)
+                try:
+                    results['audio_emotions'] = convert_numpy(audio_analyzer.analyze_emotion(tmp_path)) if audio_analyzer else []
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except Exception as e:
+                        logger.warning(f"Audio file deletion failed: {e}")
 
         # Image input
         if 'image' in request.files:
             image_file = request.files['image']
             if image_file and Config.allowed_file(image_file.filename, 'image'):
-                logger.info(f"🖼️ Analyzing image: {image_file.filename}")
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_image:
-                    try:
-                        image_file.save(tmp_image.name)
-                        tmp_image.close()
-                        if visual_analyzer:
-                            results['visual_emotions'] = convert_numpy(visual_analyzer.analyze_emotion(tmp_image.name))
+                logger.info(f"Analyzing image: {image_file.filename}")
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_image:
+                        tmp_path = tmp_image.name
+                        image_file.save(tmp_path)
+                        tmp_image.close()  # Ensure file is flushed
+                    if visual_analyzer:
+                        processed = visual_analyzer.preprocess_image(tmp_path)
+                        if processed:
+                            results['visual_emotions'] = convert_numpy(visual_analyzer.analyze_emotion(processed))
+                            os.remove(processed)
                         else:
+                            logger.warning("Image preprocessing failed.")
                             results['visual_emotions'] = []
-                    except Exception as e:
-                        logger.error(f"Image processing failed: {e}")
+                    else:
                         results['visual_emotions'] = []
-                    finally:
-                        os.unlink(tmp_image.name)
+                except Exception as e:
+                    logger.error(f"Image analysis failed: {e}")
+                    results['visual_emotions'] = []
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except Exception as e:
+                        logger.warning(f"Image file deletion failed: {e}")
 
-        # Combine (if enabled)
+        # Combined emotion
         if emotion_combiner:
             combined = emotion_combiner.combine_emotions(
                 results.get('text_emotions', []),
@@ -149,15 +156,13 @@ def analyze_emotions():
                 results.get('visual_emotions', [])
             )
             results['combined_emotions'] = convert_numpy(combined)
-        else:
-            results['combined_emotions'] = []
 
         results['processing_time'] = f"{(datetime.now() - start_time).total_seconds():.2f}s"
-        logger.info(f"✅ Analysis complete in {results['processing_time']}")
+        logger.info(f"Analysis complete in {results['processing_time']}")
         return jsonify(results)
 
     except Exception as e:
-        logger.error(f"❌ Error in analyze_emotions: {e}")
+        logger.error(f"Error in analyze_emotions: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/models/status', methods=['GET'])
@@ -204,15 +209,15 @@ def not_found(e):
     }), 404
 
 if __name__ == '__main__':
-    print("🚀 Starting AI Emotion Detection System v9.0...")
+    print("Starting AI Emotion Detection System v9.0...")
     print("=" * 60)
     Config.init_directories()
     os.makedirs('logs', exist_ok=True)
     if initialize_models():
-        print("🎉 All models loaded successfully!")
-        print(f"🌐 Server running at: http://localhost:{Config.PORT}")
+        print("All models loaded successfully.")
+        print(f"Server running at: http://{Config.HOST}:{Config.PORT}")
         print("=" * 60)
         app.run(debug=Config.DEBUG, host=Config.HOST, port=Config.PORT, threaded=True)
     else:
-        print("❌ Failed to load models. Run: cd backend && python setup.py")
+        print("Failed to load models. Run: cd backend && python setup.py")
         exit(1)

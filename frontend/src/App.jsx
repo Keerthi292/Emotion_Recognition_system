@@ -211,8 +211,8 @@ export default function App() {
       "I'm feeling quite nervous about this interview, but I'm also excited about the opportunity. I've prepared well and I'm confident in my abilities, though I can't help but feel a bit anxious about the questions they might ask. Overall, I'm happy to be here and ready to showcase my skills.",
     )
 
-    // const mockAudioFile = new File(["mock audio data"], "sample-interview-response.wav", { type: "audio/wav" })
-    // setAudioFile(mockAudioFile)
+    const mockAudioFile = new File(["mock audio data"], "sample-interview-response.wav", { type: "audio/wav" })
+    setAudioFile(mockAudioFile)
 
     const mockImageFile = new File(["mock image data"], "candidate-photo.jpg", { type: "image/jpeg" })
     setImageFile(mockImageFile)
@@ -369,7 +369,7 @@ export default function App() {
                   </Card>
                 </div>
 
-                {/* <div className="mb-4">
+                <div className="mb-4">
                   <Card>
                     <Card.Header>
                       <h5 className="mb-0">
@@ -410,7 +410,7 @@ export default function App() {
                       )}
                     </Card.Body>
                   </Card>
-                </div> */}
+                </div>
 
                 <div className="mb-4">
                   <Card>
@@ -510,8 +510,8 @@ export default function App() {
                     {results.text_emotions &&
                       renderEmotionChart(results.text_emotions, "Text Emotions", "bi-chat-text")}
 
-                    {/* {results.audio_emotions &&
-                      renderEmotionChart(results.audio_emotions, "Audio Emotions", "bi-soundwave")} */}
+                    {results.audio_emotions &&
+                      renderEmotionChart(results.audio_emotions, "Audio Emotions", "bi-soundwave")}
 
                     {results.visual_emotions &&
                       renderEmotionChart(results.visual_emotions, "Visual Emotions", "bi-eye")}
